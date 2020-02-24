@@ -50,6 +50,7 @@ async function processIssues(
     return operationsLeft;
   }
 
+  core.debug(`Start loop on issues for page `+page+` operationsLeft=`+operationsLeft);
   for (var issue of issues.data.values()) {
     core.debug(`found issue: ${issue.title} last updated ${issue.updated_at}`);
     let isPr = !!issue.pull_request;
@@ -67,11 +68,13 @@ async function processIssues(
       continue;
     } else if (isLabeled(issue, staleLabel)) {
       if (wasLastUpdatedBefore(issue, args.daysBeforeClose)) {
+        core.debug(`found issue: ${issue.title} last updated ${issue.updated_at} to close`);
         operationsLeft -= await closeIssue(client, issue);
       } else {
         continue;
       }
     } else if (wasLastUpdatedBefore(issue, args.daysBeforeStale)) {
+      core.debug(`found issue: ${issue.title} last updated ${issue.updated_at} to stale`);
       operationsLeft -= await markStale(
         client,
         issue,
