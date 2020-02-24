@@ -56,7 +56,7 @@ async function processIssues(
 
     let staleMessage = isPr ? args.stalePrMessage : args.staleIssueMessage;
     if (!staleMessage) {
-      core.debug(`skipping ${isPr ? 'pr' : 'issue'} due to empty message`);
+      //core.debug(`skipping ${isPr ? 'pr' : 'issue'} due to empty message`);
       continue;
     }
 
@@ -109,7 +109,7 @@ async function markStale(
   staleMessage: string,
   staleLabel: string
 ): Promise<number> {
-  core.debug(`marking issue ${issue.title} as stale`);
+  core.debug(`marking issue ${issue.title} last updated at ${issue.updated_at} as stale`);
 
   await client.issues.createComment({
     owner: github.context.repo.owner,
@@ -132,7 +132,7 @@ async function closeIssue(
   client: github.GitHub,
   issue: Issue
 ): Promise<number> {
-  core.debug(`closing issue ${issue.title} for being stale`);
+  core.debug(`closing issue ${issue.title} last updated at ${issue.updated_at} for being stale`);
 
   await client.issues.update({
     owner: github.context.repo.owner,
