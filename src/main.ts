@@ -109,7 +109,7 @@ async function markStale(
   staleMessage: string,
   staleLabel: string
 ): Promise<number> {
-  core.debug(`marking issue${issue.title} as stale`);
+  core.debug(`marking issue ${issue.title} as stale`);
 
   await client.issues.createComment({
     owner: github.context.repo.owner,
