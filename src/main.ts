@@ -50,7 +50,7 @@ async function processIssues(
     return operationsLeft;
   }
 
-  core.debug(`Start loop on issues for page `+page+` operationsLeft=`+operationsLeft);
+  core.debug(`Start loop on issues for page=${page} operationsLeft=${operationsLeft}`);
   for (var issue of issues.data.values()) {
     core.debug(`found issue: ${issue.title} last updated ${issue.updated_at}`);
     let isPr = !!issue.pull_request;
