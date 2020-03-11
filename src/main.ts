@@ -52,7 +52,9 @@ async function processIssues(
     return operationsLeft;
   }
 
-  core.debug(`Start loop on issues for page=${page} operationsLeft=${operationsLeft}`);
+  core.debug(
+    `Start loop on issues for page=${page} operationsLeft=${operationsLeft}`
+  );
   for (var issue of issues.data.values()) {
     core.debug(`found issue: ${issue.title} last updated ${issue.updated_at}`);
     let isPr = !!issue.pull_request;
@@ -71,15 +73,20 @@ async function processIssues(
     } else if (isLabeled(issue, staleLabel)) {
       if (args.daysBeforeClose >= 0) {
         if (wasLastUpdatedBefore(issue, args.daysBeforeClose)) {
-          core.debug(`found issue: ${issue.title} last updated ${issue.updated_at} to close`);
+          core.debug(
+            `found issue: ${issue.title} last updated ${issue.updated_at} to close`
+          );
           operationsLeft -= await closeIssue(client, issue);
         } else {
           /*core.debug(`found issue: ${issue.title} last updated ${issue.updated_at} to unstale`);*/
           /* operationsLeft -= yield markUnStale(client, issue, staleMessage, staleLabel); */
         }
       }
-    } else if (wasLastUpdatedBefore(issue, args.daysBeforeStale)) {		/* Not yet stale */
-      core.debug(`found issue: ${issue.title} last updated ${issue.updated_at} to stale`);
+    } else if (wasLastUpdatedBefore(issue, args.daysBeforeStale)) {
+      /* Not yet stale */
+      core.debug(
+        `found issue: ${issue.title} last updated ${issue.updated_at} to stale`
+      );
       operationsLeft -= await markStale(
         client,
         issue,
@@ -117,7 +124,9 @@ async function markStale(
   staleMessage: string,
   staleLabel: string
 ): Promise<number> {
-  core.debug(`marking issue ${issue.title} last updated at ${issue.updated_at} as stale`);
+  core.debug(
+    `marking issue ${issue.title} last updated at ${issue.updated_at} as stale`
+  );
 
   await client.issues.createComment({
     owner: github.context.repo.owner,
@@ -140,7 +149,9 @@ async function closeIssue(
   client: github.GitHub,
   issue: Issue
 ): Promise<number> {
-  core.debug(`closing issue ${issue.title} last updated at ${issue.updated_at} for being stale`);
+  core.debug(
+    `closing issue ${issue.title} last updated at ${issue.updated_at} for being stale`
+  );
 
   await client.issues.update({
     owner: github.context.repo.owner,
