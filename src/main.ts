@@ -39,6 +39,8 @@ async function processIssues(
   const issues = await client.issues.listForRepo({
     owner: github.context.repo.owner,
     repo: github.context.repo.repo,
+    sort: 'updated',
+    direction: 'asc',
     state: 'open',
     per_page: 100,
     page: page
@@ -67,13 +69,16 @@ async function processIssues(
     if (exemptLabel && isLabeled(issue, exemptLabel)) {
       continue;
     } else if (isLabeled(issue, staleLabel)) {
-      if (wasLastUpdatedBefore(issue, args.daysBeforeClose)) {
-        core.debug(`found issue: ${issue.title} last updated ${issue.updated_at} to close`);
-        operationsLeft -= await closeIssue(client, issue);
-      } else {
-        continue;
+      if (args.daysBeforeClose >= 0) {
+        if (wasLastUpdatedBefore(issue, args.daysBeforeClose)) {
+          core.debug(`found issue: ${issue.title} last updated ${issue.updated_at} to close`);
+          operationsLeft -= await closeIssue(client, issue);
+        } else {
+          /*core.debug(`found issue: ${issue.title} last updated ${issue.updated_at} to unstale`);*/
+          /* operationsLeft -= yield markUnStale(client, issue, staleMessage, staleLabel); */
+        }
       }
-    } else if (wasLastUpdatedBefore(issue, args.daysBeforeStale)) {
+    } else if (wasLastUpdatedBefore(issue, args.daysBeforeStale)) {		/* Not yet stale */
       core.debug(`found issue: ${issue.title} last updated ${issue.updated_at} to stale`);
       operationsLeft -= await markStale(
         client,
