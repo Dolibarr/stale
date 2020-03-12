@@ -1,32 +1,93 @@
 import * as core from '@actions/core';
 import * as github from '@actions/github';
 import * as Octokit from '@octokit/rest';
+import dayjs from 'dayjs';
 
 type Issue = Octokit.IssuesListForRepoResponseItem;
 type IssueLabel = Octokit.IssuesListForRepoResponseItemLabelsItem;
+const GH_ACTIONS_LOGIN = 'github-actions[bot]';
 
 type Args = {
   repoToken: string;
-  staleIssueMessage: string;
-  stalePrMessage: string;
   daysBeforeStale: number;
   daysBeforeClose: number;
-  staleIssueLabel: string;
-  exemptIssueLabel: string;
-  stalePrLabel: string;
-  exemptPrLabel: string;
+  staleMessage: string;
+  staleLabel: string;
+  exemptLabels: Array<string>;
   operationsPerRun: number;
+  dryRun: boolean;
 };
 
 async function run() {
   try {
-    const args = getAndValidateArgs();
+    let args = getAndValidateArgs();
+    let client = new github.GitHub(args.repoToken);
 
-    const client = new github.GitHub(args.repoToken);
-    await processIssues(client, args, args.operationsPerRun);
+    if (github.context.issue && github.context.issue.number) {
+      core.info(
+        'Action context contains an issue, check if it is still stale...'
+      );
+
+      await checkIssue(client, args, github.context.issue.number);
+    } else {
+      core.info('Check for stale issues...');
+
+      await processIssues(client, args, args.operationsPerRun);
+    }
   } catch (error) {
     core.error(error);
     core.setFailed(error.message);
+  }
+}
+
+async function checkIssue(client: github.GitHub, args: Args, issueId: number) {
+  let issue = (
+    await client.issues.get({
+      owner: github.context.repo.owner,
+      repo: github.context.repo.repo,
+      issue_number: issueId
+    })
+  ).data;
+
+  let isStale = isLabeled(issue, args.staleLabel);
+  if (!isStale) return;
+
+  let comments = (
+    await client.issues.listComments({
+      owner: github.context.repo.owner,
+      repo: github.context.repo.repo,
+      issue_number: issueId,
+      since: dayjs(issue.updated_at)
+        .subtract(args.daysBeforeClose, 'day')
+        .toISOString()
+    })
+  ).data;
+
+  let staleComment = comments.find(c => c.user.login === GH_ACTIONS_LOGIN);
+  if (comments[comments.length - 1].user.login !== GH_ACTIONS_LOGIN) {
+    try {
+      await client.issues.removeLabel({
+        owner: github.context.repo.owner,
+        repo: github.context.repo.repo,
+        issue_number: issueId,
+        name: args.staleLabel
+      });
+    } catch (e) {
+      core.warning('Could not remove stale label.');
+    }
+
+    try {
+      // If we can't find a stale comment just forget about it...
+      if (staleComment) {
+        await client.issues.deleteComment({
+          owner: github.context.repo.owner,
+          repo: github.context.repo.repo,
+          comment_id: staleComment.id
+        });
+      }
+    } catch (e) {
+      core.warning('Could not remove stale comment.');
+    }
   }
 }
 
@@ -36,7 +97,7 @@ async function processIssues(
   operationsLeft: number,
   page: number = 1
 ): Promise<number> {
-  const issues = await client.issues.listForRepo({
+  let issues = await client.issues.listForRepo({
     owner: github.context.repo.owner,
     repo: github.context.repo.repo,
     sort: 'updated',
@@ -48,50 +109,43 @@ async function processIssues(
 
   operationsLeft -= 1;
 
+  let shortestDelay =
+    args.daysBeforeClose < args.daysBeforeStale
+      ? args.daysBeforeClose
+      : args.daysBeforeStale;
+
   if (issues.data.length === 0 || operationsLeft === 0) {
     return operationsLeft;
   }
 
-  core.debug(
-    `Start loop on issues for page=${page} operationsLeft=${operationsLeft}`
-  );
   for (var issue of issues.data.values()) {
-    core.debug(`found issue: ${issue.title} last updated ${issue.updated_at}`);
-    let isPr = !!issue.pull_request;
-
-    let staleMessage = isPr ? args.stalePrMessage : args.staleIssueMessage;
-    if (!staleMessage) {
-      core.debug(`skipping ${isPr ? 'pr' : 'issue'} due to empty message`);
+    // Skip Pull Requests
+    if (!!issue.pull_request) {
       continue;
     }
 
-    let staleLabel = isPr ? args.stalePrLabel : args.staleIssueLabel;
-    let exemptLabel = isPr ? args.exemptPrLabel : args.exemptIssueLabel;
+    // Return early, no more issues will match
+    if (!wasLastUpdatedBefore(issue, shortestDelay)) {
+      return operationsLeft;
+    }
 
-    if (exemptLabel && isLabeled(issue, exemptLabel)) {
+    // Skip Exempt issues
+    if (args.exemptLabels.length && isExempt(issue, args.exemptLabels)) {
       continue;
-    } else if (isLabeled(issue, staleLabel)) {
-      if (args.daysBeforeClose >= 0) {
-        if (wasLastUpdatedBefore(issue, args.daysBeforeClose)) {
-          core.debug(
-            `found issue: ${issue.title} last updated ${issue.updated_at} to close`
-          );
-          operationsLeft -= await closeIssue(client, issue);
-        } else {
-          /*core.debug(`found issue: ${issue.title} last updated ${issue.updated_at} to unstale`);*/
-          /* operationsLeft -= yield markUnStale(client, issue, staleMessage, staleLabel); */
-        }
+    }
+
+    // Check if it's a stale issue
+    if (isLabeled(issue, args.staleLabel)) {
+      if (wasLastUpdatedBefore(issue, args.daysBeforeClose)) {
+        operationsLeft -= await closeIssue(client, issue, args.dryRun);
       }
     } else if (wasLastUpdatedBefore(issue, args.daysBeforeStale)) {
-      /* Not yet stale */
-      core.debug(
-        `found issue: ${issue.title} last updated ${issue.updated_at} to stale`
-      );
       operationsLeft -= await markStale(
         client,
         issue,
-        staleMessage,
-        staleLabel
+        args.staleMessage,
+        args.staleLabel,
+        args.dryRun
       );
     }
 
@@ -102,18 +156,31 @@ async function processIssues(
       return 0;
     }
   }
+
   return await processIssues(client, args, operationsLeft, page + 1);
 }
 
 function isLabeled(issue: Issue, label: string): boolean {
-  const labelComparer: (l: IssueLabel) => boolean = l =>
+  let labelComparer: (l: IssueLabel) => boolean = l =>
     label.localeCompare(l.name, undefined, {sensitivity: 'accent'}) === 0;
   return issue.labels.filter(labelComparer).length > 0;
 }
 
+function isExempt(issue: Issue, labels: Array<string>): boolean {
+  let issueLabels = issue.labels;
+  for (let l of issueLabels) {
+    let lowerCaseLabel = l.name.toLowerCase();
+    if (labels.find(exemptLabel => lowerCaseLabel.includes(exemptLabel))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function wasLastUpdatedBefore(issue: Issue, num_days: number): boolean {
-  const daysInMillis = 1000 * 60 * 60 * 24 * num_days;
-  const millisSinceLastUpdated =
+  let daysInMillis = 1000 * 60 * 60 * 24 * num_days;
+  let millisSinceLastUpdated =
     new Date().getTime() - new Date(issue.updated_at).getTime();
   return millisSinceLastUpdated >= daysInMillis;
 }
@@ -122,11 +189,19 @@ async function markStale(
   client: github.GitHub,
   issue: Issue,
   staleMessage: string,
-  staleLabel: string
+  staleLabel: string,
+  isDryRun: boolean
 ): Promise<number> {
-  core.debug(
-    `marking issue ${issue.title} last updated at ${issue.updated_at} as stale`
+  core.info(
+    `[STALE] Marking issue #${issue.number} ${
+      issue.title
+    }, with labels: ${issue.labels.map(l => l.name).join(', ')}, last updated ${
+      issue.updated_at
+    }`
   );
+
+  // Do not perform operation on dry run
+  if (isDryRun) return 0;
 
   await client.issues.createComment({
     owner: github.context.repo.owner,
@@ -147,11 +222,15 @@ async function markStale(
 
 async function closeIssue(
   client: github.GitHub,
-  issue: Issue
+  issue: Issue,
+  isDryRun: boolean
 ): Promise<number> {
-  core.debug(
-    `closing issue ${issue.title} last updated at ${issue.updated_at} for being stale`
+  core.info(
+    `[STALE] Closing issue #${issue.number} ${issue.title} last updated ${issue.updated_at}`
   );
+
+  // Do not perform operation on dry run
+  if (isDryRun) return 0;
 
   await client.issues.update({
     owner: github.context.repo.owner,
@@ -164,23 +243,21 @@ async function closeIssue(
 }
 
 function getAndValidateArgs(): Args {
-  const args = {
+  let args = {
     repoToken: core.getInput('repo-token', {required: true}),
-    staleIssueMessage: core.getInput('stale-issue-message'),
-    stalePrMessage: core.getInput('stale-pr-message'),
     daysBeforeStale: parseInt(
       core.getInput('days-before-stale', {required: true})
     ),
     daysBeforeClose: parseInt(
       core.getInput('days-before-close', {required: true})
     ),
-    staleIssueLabel: core.getInput('stale-issue-label', {required: true}),
-    exemptIssueLabel: core.getInput('exempt-issue-label'),
-    stalePrLabel: core.getInput('stale-pr-label', {required: true}),
-    exemptPrLabel: core.getInput('exempt-pr-label'),
+    staleMessage: core.getInput('stale-message', {required: true}),
+    staleLabel: core.getInput('stale-label', {required: true}),
+    exemptLabels: core.getInput('exempt-labels', {required: true}).split(','),
     operationsPerRun: parseInt(
       core.getInput('operations-per-run', {required: true})
-    )
+    ),
+    dryRun: core.getInput('dry-run') == 'true'
   };
 
   for (var numberInput of [
@@ -192,6 +269,10 @@ function getAndValidateArgs(): Args {
       throw Error(`input ${numberInput} did not parse to a valid integer`);
     }
   }
+
+  args.exemptLabels = args.exemptLabels.map(exemptLabel =>
+    exemptLabel.trim().toLowerCase()
+  );
 
   return args;
 }
