@@ -270,6 +270,10 @@ function getAndValidateArgs(): Args {
     }
   }
 
+  core.info(
+    `exemptLabels are: ${args.exemptLabels.join(', ')}`
+  );
+  
   args.exemptLabels = args.exemptLabels.map(exemptLabel =>
     exemptLabel.trim().toLowerCase()
   );
