@@ -243,6 +243,8 @@ async function closeIssue(
 }
 
 function getAndValidateArgs(): Args {
+  core.info('getAndValidateArgs...');
+
   let args = {
     repoToken: core.getInput('repo-token', {required: true}),
     daysBeforeStale: parseInt(
@@ -259,6 +261,7 @@ function getAndValidateArgs(): Args {
     ),
     dryRun: core.getInput('dry-run') == 'true'
   };
+
 
   for (var numberInput of [
     'days-before-stale',
