@@ -3048,11 +3048,14 @@ function processIssues(client, args, operationsLeft, page = 1) {
             return operationsLeft;
         }
         for (var issue of issues.data.values()) {
-        	core.info(`Process issue #${issue.number} pull_request=${issue.pull_request}`);
             // Skip Pull Requests
             if (!!issue.pull_request) {
+                core.info(`Process issue #${issue.number} - Ignored, it is a pull_request=${issue.pull_request}`);
                 continue;
             }
+
+            core.info(`Process issue #${issue.number} - Updated at ${issue.updated_at}`);
+            
             // Return early, no more issues will match
             if (!wasLastUpdatedBefore(issue, shortestDelay)) {
                 return operationsLeft;
