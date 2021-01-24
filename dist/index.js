@@ -3054,7 +3054,7 @@ function processIssues(client, args, operationsLeft, page = 1) {
                 continue;
             }
 
-            core.info(`Process issue #${issue.number} - Updated at ${issue.updated_at}`);
+            core.info(`Process issue #${issue.number}, with labels: ${issue.labels.map(l => l.name).join(', ')}, last updated ${issue.updated_at}`);
             
             // Return early, no more issues will match
             if (!wasLastUpdatedBefore(issue, shortestDelay)) {
