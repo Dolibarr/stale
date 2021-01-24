@@ -114,6 +114,10 @@ async function processIssues(
       ? args.daysBeforeClose
       : args.daysBeforeStale;
 
+  core.info(
+  	`Found ${issues.data.length} issues.`
+  );
+  
   if (issues.data.length === 0 || operationsLeft === 0) {
     return operationsLeft;
   }
