@@ -3048,6 +3048,7 @@ function processIssues(client, args, operationsLeft, page = 1) {
             return operationsLeft;
         }
         for (var issue of issues.data.values()) {
+        	core.info(`Process issue #${issue.number} pull_request=${issue.pull_request}`);
             // Skip Pull Requests
             if (!!issue.pull_request) {
                 continue;
