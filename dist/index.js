@@ -3054,16 +3054,20 @@ function processIssues(client, args, operationsLeft, page = 1) {
                 continue;
             }
 
-            core.info(`Process issue #${issue.number}, with labels: ${issue.labels.map(l => l.name).join(', ')}, last updated ${issue.updated_at}`);
-            
             // Return early, no more issues will match
             if (!wasLastUpdatedBefore(issue, shortestDelay)) {
+	            core.info(`Process issue #${issue.number}, last updated ${issue.updated_at} - Ignored, updated recently`);
                 return operationsLeft;
             }
+            
             // Skip Exempt issues
             if (args.exemptLabels.length && isExempt(issue, args.exemptLabels)) {
+	            core.info(`Process issue #${issue.number}, with labels: ${issue.labels.map(l => l.name).join(', ')} - Ignored, excluded by a label`);
                 continue;
             }
+            
+            core.info(`Process issue #${issue.number}, with labels: ${issue.labels.map(l => l.name).join(', ')}, last updated ${issue.updated_at}`);
+            
             // Check if it's a stale issue
             if (isLabeled(issue, args.staleLabel)) {
                 if (wasLastUpdatedBefore(issue, args.daysBeforeClose)) {
